@@ -1,4 +1,4 @@
-import { MouseEvent, RefObject } from 'react';
+import { MouseEvent, PointerEvent, RefObject } from 'react';
 import { StoreApi } from 'zustand';
 
 import { getDimensions } from '../../utils';
@@ -51,6 +51,19 @@ export function getMouseHandler(
         if (node) {
           handler(event, { ...node });
         }
+      };
+}
+
+export function getPointerHandler(
+  id: string,
+  getState: StoreApi<ReactFlowState>['getState'],
+  handler?: (event: PointerEvent, node: Node) => void
+) {
+  return handler === undefined
+    ? handler
+    : (event: PointerEvent) => {
+        const node = getState().nodeInternals.get(id)!;
+        handler(event, { ...node });
       };
 }
 

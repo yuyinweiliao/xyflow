@@ -7,9 +7,10 @@ import { Provider } from '../../contexts/NodeIdContext';
 import { ARIA_NODE_DESC_KEY } from '../A11yDescriptions';
 import useDrag from '../../hooks/useDrag';
 import useUpdateNodePositions from '../../hooks/useUpdateNodePositions';
-import { getMouseHandler, handleNodeClick } from './utils';
+import { getMouseHandler, getPointerHandler, handleNodeClick } from './utils';
 import { elementSelectionKeys, isInputDOMNode } from '../../utils';
 import type { NodeProps, WrapNodeProps, XYPosition } from '../../types';
+import { onPointerDownDisableCapture } from '../../utils/pointerEvents';
 
 export const arrowKeyDiffs: Record<string, XYPosition> = {
   ArrowUp: { x: 0, y: -1 },
@@ -32,6 +33,9 @@ export default (NodeComponent: ComponentType<NodeProps>) => {
     onMouseEnter,
     onMouseMove,
     onMouseLeave,
+    onPointerEnter,
+    onPointerMove,
+    onPointerLeave,
     onContextMenu,
     onDoubleClick,
     style,
@@ -52,6 +56,7 @@ export default (NodeComponent: ComponentType<NodeProps>) => {
     noPanClassName,
     initialized,
     disableKeyboardA11y,
+    disablePointerCapture,
     ariaLabel,
     rfId,
   }: WrapNodeProps) => {
@@ -66,6 +71,11 @@ export default (NodeComponent: ComponentType<NodeProps>) => {
     const onMouseEnterHandler = getMouseHandler(id, store.getState, onMouseEnter);
     const onMouseMoveHandler = getMouseHandler(id, store.getState, onMouseMove);
     const onMouseLeaveHandler = getMouseHandler(id, store.getState, onMouseLeave);
+
+    const onPointerEnterHandler = getPointerHandler(id, store.getState, onPointerEnter);
+    const onPointerMoveHandler = getPointerHandler(id, store.getState, onPointerMove);
+    const onPointerLeaveHandler = getPointerHandler(id, store.getState, onPointerLeave);
+
     const onContextMenuHandler = getMouseHandler(id, store.getState, onContextMenu);
     const onDoubleClickHandler = getMouseHandler(id, store.getState, onDoubleClick);
     const onSelectNodeHandler = (event: MouseEvent) => {
@@ -196,6 +206,10 @@ export default (NodeComponent: ComponentType<NodeProps>) => {
         onMouseEnter={onMouseEnterHandler}
         onMouseMove={onMouseMoveHandler}
         onMouseLeave={onMouseLeaveHandler}
+        onPointerDown={disablePointerCapture ? onPointerDownDisableCapture : undefined}
+        onPointerEnter={onPointerEnterHandler}
+        onPointerMove={onPointerMoveHandler}
+        onPointerLeave={onPointerLeaveHandler}
         onContextMenu={onContextMenuHandler}
         onClick={onSelectNodeHandler}
         onDoubleClick={onDoubleClickHandler}

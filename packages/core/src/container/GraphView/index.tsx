@@ -53,6 +53,9 @@ const GraphView = ({
   onNodeMouseEnter,
   onNodeMouseMove,
   onNodeMouseLeave,
+  onNodePointerEnter,
+  onNodePointerMove,
+  onNodePointerLeave,
   onNodeContextMenu,
   onSelectionContextMenu,
   onSelectionStart,
@@ -95,6 +98,9 @@ const GraphView = ({
   onEdgeMouseEnter,
   onEdgeMouseMove,
   onEdgeMouseLeave,
+  onEdgePointerEnter,
+  onEdgePointerMove,
+  onEdgePointerLeave,
   edgeUpdaterRadius,
   onEdgeUpdateStart,
   onEdgeUpdateEnd,
@@ -103,6 +109,7 @@ const GraphView = ({
   noPanClassName,
   elevateEdgesOnSelect,
   disableKeyboardA11y,
+  disablePointerCapture,
   nodeOrigin,
   nodeExtent,
   rfId,
@@ -162,6 +169,9 @@ const GraphView = ({
           onEdgeMouseEnter={onEdgeMouseEnter}
           onEdgeMouseMove={onEdgeMouseMove}
           onEdgeMouseLeave={onEdgeMouseLeave}
+          onEdgePointerEnter={onEdgePointerEnter}
+          onEdgePointerMove={onEdgePointerMove}
+          onEdgePointerLeave={onEdgePointerLeave}
           onEdgeUpdateStart={onEdgeUpdateStart}
           onEdgeUpdateEnd={onEdgeUpdateEnd}
           edgeUpdaterRadius={edgeUpdaterRadius}
@@ -169,6 +179,7 @@ const GraphView = ({
           noPanClassName={noPanClassName}
           elevateEdgesOnSelect={!!elevateEdgesOnSelect}
           disableKeyboardA11y={disableKeyboardA11y}
+          disablePointerCapture={disablePointerCapture}
           rfId={rfId}
         >
           <ConnectionLine
@@ -187,12 +198,16 @@ const GraphView = ({
           onNodeMouseEnter={onNodeMouseEnter}
           onNodeMouseMove={onNodeMouseMove}
           onNodeMouseLeave={onNodeMouseLeave}
+          onNodePointerEnter={onNodePointerEnter}
+          onNodePointerMove={onNodePointerMove}
+          onNodePointerLeave={onNodePointerLeave}
           onNodeContextMenu={onNodeContextMenu}
           selectNodesOnDrag={selectNodesOnDrag}
           onlyRenderVisibleElements={onlyRenderVisibleElements}
           noPanClassName={noPanClassName}
           noDragClassName={noDragClassName}
           disableKeyboardA11y={disableKeyboardA11y}
+          disablePointerCapture={disablePointerCapture}
           nodeOrigin={nodeOrigin}
           nodeExtent={nodeExtent}
           rfId={rfId}

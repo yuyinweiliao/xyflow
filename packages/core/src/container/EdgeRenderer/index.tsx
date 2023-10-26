@@ -23,6 +23,9 @@ type EdgeRendererProps = Pick<
   | 'onEdgeMouseEnter'
   | 'onEdgeMouseMove'
   | 'onEdgeMouseLeave'
+  | 'onEdgePointerEnter'
+  | 'onEdgePointerMove'
+  | 'onEdgePointerLeave'
   | 'onEdgeUpdateStart'
   | 'onEdgeUpdateEnd'
   | 'edgeUpdaterRadius'
@@ -30,6 +33,7 @@ type EdgeRendererProps = Pick<
   | 'elevateEdgesOnSelect'
   | 'rfId'
   | 'disableKeyboardA11y'
+  | 'disablePointerCapture'
 > & {
   edgeTypes: EdgeTypesWrapped;
   elevateEdgesOnSelect: boolean;
@@ -60,12 +64,16 @@ const EdgeRenderer = ({
   onEdgeMouseEnter,
   onEdgeMouseMove,
   onEdgeMouseLeave,
+  onEdgePointerEnter,
+  onEdgePointerMove,
+  onEdgePointerLeave,
   onEdgeClick,
   edgeUpdaterRadius,
   onEdgeDoubleClick,
   onEdgeUpdateStart,
   onEdgeUpdateEnd,
   children,
+  disablePointerCapture,
 }: EdgeRendererProps) => {
   const { edgesFocusable, edgesUpdatable, elementsSelectable, width, height, connectionMode, nodeInternals, onError } =
     useStore(selector, shallow);
@@ -167,6 +175,9 @@ const EdgeRenderer = ({
                   onMouseEnter={onEdgeMouseEnter}
                   onMouseMove={onEdgeMouseMove}
                   onMouseLeave={onEdgeMouseLeave}
+                  onPointerEnter={onEdgePointerEnter}
+                  onPointerMove={onEdgePointerMove}
+                  onPointerLeave={onEdgePointerLeave}
                   onClick={onEdgeClick}
                   edgeUpdaterRadius={edgeUpdaterRadius}
                   onEdgeDoubleClick={onEdgeDoubleClick}
@@ -178,6 +189,7 @@ const EdgeRenderer = ({
                   isUpdatable={isUpdatable}
                   pathOptions={'pathOptions' in edge ? edge.pathOptions : undefined}
                   interactionWidth={edge.interactionWidth}
+                  disablePointerCapture={disablePointerCapture}
                 />
               );
             })}

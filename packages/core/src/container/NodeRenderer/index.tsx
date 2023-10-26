@@ -20,12 +20,16 @@ type NodeRendererProps = Pick<
   | 'onNodeMouseEnter'
   | 'onNodeMouseMove'
   | 'onNodeMouseLeave'
+  | 'onNodePointerEnter'
+  | 'onNodePointerMove'
+  | 'onNodePointerLeave'
   | 'onNodeContextMenu'
   | 'onlyRenderVisibleElements'
   | 'noPanClassName'
   | 'noDragClassName'
   | 'rfId'
   | 'disableKeyboardA11y'
+  | 'disablePointerCapture'
   | 'nodeOrigin'
   | 'nodeExtent'
 > & {
@@ -124,6 +128,9 @@ const NodeRenderer = (props: NodeRendererProps) => {
             onMouseEnter={props.onNodeMouseEnter}
             onMouseMove={props.onNodeMouseMove}
             onMouseLeave={props.onNodeMouseLeave}
+            onPointerEnter={props.onNodePointerEnter}
+            onPointerMove={props.onNodePointerMove}
+            onPointerLeave={props.onNodePointerLeave}
             onContextMenu={props.onNodeContextMenu}
             onDoubleClick={props.onNodeDoubleClick}
             selected={!!node.selected}
@@ -140,6 +147,7 @@ const NodeRenderer = (props: NodeRendererProps) => {
             initialized={!!node.width && !!node.height}
             rfId={props.rfId}
             disableKeyboardA11y={props.disableKeyboardA11y}
+            disablePointerCapture={props.disablePointerCapture}
             ariaLabel={node.ariaLabel}
           />
         );

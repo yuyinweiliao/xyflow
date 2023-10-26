@@ -68,6 +68,9 @@ const ReactFlow = forwardRef<ReactFlowRefType, ReactFlowProps>(
       onNodeMouseEnter,
       onNodeMouseMove,
       onNodeMouseLeave,
+      onNodePointerEnter,
+      onNodePointerMove,
+      onNodePointerLeave,
       onNodeContextMenu,
       onNodeDoubleClick,
       onNodeDragStart,
@@ -132,6 +135,9 @@ const ReactFlow = forwardRef<ReactFlowRefType, ReactFlowProps>(
       onEdgeMouseEnter,
       onEdgeMouseMove,
       onEdgeMouseLeave,
+      onEdgePointerEnter,
+      onEdgePointerMove,
+      onEdgePointerLeave,
       onEdgeUpdateStart,
       onEdgeUpdateEnd,
       edgeUpdaterRadius = 10,
@@ -153,6 +159,7 @@ const ReactFlow = forwardRef<ReactFlowRefType, ReactFlowProps>(
       autoPanOnNodeDrag = true,
       connectionRadius = 20,
       isValidConnection,
+      disablePointerCapture = false,
       onError,
       style,
       id,
@@ -183,6 +190,9 @@ const ReactFlow = forwardRef<ReactFlowRefType, ReactFlowProps>(
             onNodeMouseEnter={onNodeMouseEnter}
             onNodeMouseMove={onNodeMouseMove}
             onNodeMouseLeave={onNodeMouseLeave}
+            onNodePointerEnter={onNodePointerEnter}
+            onNodePointerMove={onNodePointerMove}
+            onNodePointerLeave={onNodePointerLeave}
             onNodeContextMenu={onNodeContextMenu}
             onNodeDoubleClick={onNodeDoubleClick}
             nodeTypes={nodeTypes}
@@ -227,6 +237,9 @@ const ReactFlow = forwardRef<ReactFlowRefType, ReactFlowProps>(
             onEdgeMouseEnter={onEdgeMouseEnter}
             onEdgeMouseMove={onEdgeMouseMove}
             onEdgeMouseLeave={onEdgeMouseLeave}
+            onEdgePointerEnter={onEdgePointerEnter}
+            onEdgePointerMove={onEdgePointerMove}
+            onEdgePointerLeave={onEdgePointerLeave}
             onEdgeUpdateStart={onEdgeUpdateStart}
             onEdgeUpdateEnd={onEdgeUpdateEnd}
             edgeUpdaterRadius={edgeUpdaterRadius}
@@ -237,6 +250,7 @@ const ReactFlow = forwardRef<ReactFlowRefType, ReactFlowProps>(
             elevateEdgesOnSelect={elevateEdgesOnSelect}
             rfId={rfId}
             disableKeyboardA11y={disableKeyboardA11y}
+            disablePointerCapture={disablePointerCapture}
             nodeOrigin={nodeOrigin}
             nodeExtent={nodeExtent}
           />
