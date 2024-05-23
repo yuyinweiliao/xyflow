@@ -1,110 +1,126 @@
-<svelte:options immutable />
-
 <script lang="ts">
-  import { setContext, onDestroy, createEventDispatcher } from 'svelte';
-  import { get, writable } from 'svelte/store';
+  import { setContext, onDestroy } from 'svelte';
   import cc from 'classcat';
   import { errorMessages, Position } from '@xyflow/system';
 
   import drag from '$lib/actions/drag';
   import { useStore } from '$lib/store';
   import DefaultNode from '$lib/components/nodes/DefaultNode.svelte';
-  import type { NodeWrapperProps } from './types';
   import { getNodeInlineStyleDimensions } from './utils';
-  import type { NodeEventMap } from '$lib/types';
 
-  interface $$Props extends NodeWrapperProps {}
+  import type { ConnectableContext, NodeWrapperProps } from './types';
+  import type { NodeEvents } from '$lib/types';
 
-  export let node: $$Props['node'];
-  export let id: $$Props['id'];
-  export let data: $$Props['data'] = {};
-  export let selected: $$Props['selected'] = false;
-  export let draggable: $$Props['draggable'] = undefined;
-  export let selectable: $$Props['selectable'] = undefined;
-  export let connectable: $$Props['connectable'] = true;
-  export let hidden: $$Props['hidden'] = false;
-  export let dragging: boolean = false;
-  export let resizeObserver: $$Props['resizeObserver'] = null;
-  export let style: $$Props['style'] = undefined;
-  export let type: $$Props['type'] = 'default';
-  export let isParent: $$Props['isParent'] = false;
-  export let positionX: $$Props['positionX'];
-  export let positionY: $$Props['positionY'];
-  export let positionOriginX: $$Props['positionOriginX'];
-  export let positionOriginY: $$Props['positionOriginY'];
-  export let sourcePosition: $$Props['sourcePosition'] = undefined;
-  export let targetPosition: $$Props['targetPosition'] = undefined;
-  export let zIndex: $$Props['zIndex'];
-  export let measuredWidth: $$Props['measuredWidth'] = undefined;
-  export let measuredHeight: $$Props['measuredHeight'] = undefined;
-  export let initialWidth: $$Props['initialWidth'] = undefined;
-  export let initialHeight: $$Props['initialHeight'] = undefined;
-  export let width: $$Props['width'] = undefined;
-  export let height: $$Props['height'] = undefined;
-  export let dragHandle: $$Props['dragHandle'] = undefined;
-  export let initialized: $$Props['initialized'] = false;
-  let className: string = '';
-  export { className as class };
-
-  const store = useStore();
-  const {
-    nodeTypes,
-    nodeDragThreshold,
-    selectNodesOnDrag,
-    handleNodeSelection,
-    updateNodeInternals
-  } = store;
-
-  let nodeRef: HTMLDivElement;
-  let prevNodeRef: HTMLDivElement | null = null;
-
-  const dispatchNodeEvent = createEventDispatcher<NodeEventMap>();
-  const connectableStore = writable(connectable);
-  let prevType: string | undefined = undefined;
-  let prevSourcePosition: Position | undefined = undefined;
-  let prevTargetPosition: Position | undefined = undefined;
-
-  $: nodeType = type || 'default';
-  $: nodeTypeValid = !!$nodeTypes[nodeType];
-  $: nodeComponent = $nodeTypes[nodeType] || DefaultNode;
-
-  $: {
-    if (!nodeTypeValid) {
-      console.warn('003', errorMessages['error003'](type!));
-    }
-  }
-
-  $: inlineStyleDimensions = getNodeInlineStyleDimensions({
-    width,
-    height,
+  let {
+    node,
+    id,
+    data = {},
+    selected = false,
+    draggable,
+    selectable,
+    connectable = true,
+    hidden = false,
+    dragging = false,
+    resizeObserver = null,
+    style,
+    class: className,
+    type = 'default',
+    isParent = false,
+    positionX,
+    positionY,
+    positionOriginX,
+    positionOriginY,
+    sourcePosition,
+    targetPosition,
+    zIndex,
+    measuredWidth,
+    measuredHeight,
     initialWidth,
     initialHeight,
-    measuredWidth,
-    measuredHeight
-  });
+    width,
+    height,
+    dragHandle,
+    initialized = false,
+    onnodeclick,
+    onnodedrag,
+    onnodedragstart,
+    onnodedragstop,
+    onnodemouseenter,
+    onnodemouseleave,
+    onnodemousemove,
+    onnodecontextmenu
+  }: NodeWrapperProps & NodeEvents = $props();
 
-  $: {
-    connectableStore.set(!!connectable);
+  const store = useStore();
+
+  let nodeRef: HTMLDivElement | null = $state(null);
+  let prevNodeRef: HTMLDivElement | null = null;
+
+  let prevType: string | undefined;
+  let prevSourcePosition: Position | undefined;
+  let prevTargetPosition: Position | undefined;
+
+  if (process.env.NODE_ENV === 'development') {
+    $effect(() => {
+      const valid = !!store.nodeTypes[type];
+      if (!valid) {
+        console.warn('003', errorMessages['error003'](type!));
+      }
+    });
   }
 
-  $: {
+  let nodeComponent = $derived(store.nodeTypes[type] || DefaultNode);
+
+  let connectableContext: ConnectableContext = {
+    get value() {
+      return connectable;
+    }
+  };
+
+  let inlineStyleDimensions = $derived(
+    getNodeInlineStyleDimensions({
+      width,
+      height,
+      initialWidth,
+      initialHeight,
+      measuredWidth,
+      measuredHeight
+    })
+  );
+
+  setContext('svelteflow__node_id', id);
+  setContext('svelteflow__node_connectable', connectableContext);
+
+  // TODO: extract this part!
+  $effect(() => {
+    // console.log(initialized);
+    // TODO: HOLY MOLY! changing the order of the initialized breaks effect subscriptions
+    if (resizeObserver && (!initialized || nodeRef !== prevNodeRef)) {
+      prevNodeRef && resizeObserver.unobserve(prevNodeRef);
+      nodeRef && resizeObserver.observe(nodeRef);
+      prevNodeRef = nodeRef;
+    }
+  });
+
+  $effect(() => {
     // if type, sourcePosition or targetPosition changes,
     // we need to re-calculate the handle positions
-    const doUpdate =
-      (prevType && nodeType !== prevType) ||
-      (prevSourcePosition && sourcePosition !== prevSourcePosition) ||
-      (prevTargetPosition && targetPosition !== prevTargetPosition);
+    if (!nodeRef) return;
 
-    if (doUpdate) {
+    if (
+      (prevType && type !== prevType) ||
+      (prevSourcePosition && sourcePosition !== prevSourcePosition) ||
+      (prevTargetPosition && targetPosition !== prevTargetPosition)
+    ) {
       requestAnimationFrame(() =>
-        updateNodeInternals(
+        store.updateNodeInternals(
           new Map([
             [
               id,
               {
                 id,
-                nodeElement: nodeRef,
-                force: true
+                nodeElement: nodeRef!,
+                forceUpdate: true
               }
             ]
           ])
@@ -112,21 +128,10 @@
       );
     }
 
-    prevType = nodeType;
+    prevType = type;
     prevSourcePosition = sourcePosition;
     prevTargetPosition = targetPosition;
-  }
-
-  setContext('svelteflow__node_id', id);
-  setContext('svelteflow__node_connectable', connectableStore);
-
-  $: {
-    if (resizeObserver && (nodeRef !== prevNodeRef || !initialized)) {
-      prevNodeRef && resizeObserver.unobserve(prevNodeRef);
-      nodeRef && resizeObserver.observe(nodeRef);
-      prevNodeRef = nodeRef;
-    }
-  }
+  });
 
   onDestroy(() => {
     if (prevNodeRef) {
@@ -135,13 +140,13 @@
   });
 
   function onSelectNodeHandler(event: MouseEvent | TouchEvent) {
-    if (selectable && (!get(selectNodesOnDrag) || !draggable || get(nodeDragThreshold) > 0)) {
+    if (selectable && (!store.selectNodesOnDrag || !draggable || store.nodeDragThreshold > 0)) {
       // this handler gets called by XYDrag on drag start when selectNodesOnDrag=true
       // here we only need to call it when selectNodesOnDrag=false
-      handleNodeSelection(id);
+      store.handleNodeSelection(id);
     }
 
-    dispatchNodeEvent('nodeclick', { node: node.internals.userNode, event });
+    onnodeclick?.({ node, event });
   }
 </script>
 
@@ -155,21 +160,21 @@
       disabled: false,
       handleSelector: dragHandle,
       noDragClass: 'nodrag',
-      onNodeMouseDown: handleNodeSelection,
+      onNodeMouseDown: store.handleNodeSelection,
       onDrag: (event, _, targetNode, nodes) => {
-        dispatchNodeEvent('nodedrag', { event, targetNode, nodes });
+        onnodedrag?.({ event, targetNode, nodes });
       },
       onDragStart: (event, _, targetNode, nodes) => {
-        dispatchNodeEvent('nodedragstart', { event, targetNode, nodes });
+        onnodedragstart?.({ event, targetNode, nodes });
       },
       onDragStop: (event, _, targetNode, nodes) => {
-        dispatchNodeEvent('nodedragstop', { event, targetNode, nodes });
+        onnodedragstop?.({ event, targetNode, nodes });
       },
       store
     }}
     bind:this={nodeRef}
     data-id={id}
-    class={cc(['svelte-flow__node', `svelte-flow__node-${nodeType}`, className])}
+    class={cc(['svelte-flow__node', `svelte-flow__node-${type}`, className])}
     class:dragging
     class:selected
     class:draggable
@@ -181,11 +186,19 @@
     style:transform="translate({positionOriginX}px, {positionOriginY}px)"
     style:visibility={initialized ? 'visible' : 'hidden'}
     style="{style ?? ''};{inlineStyleDimensions.width}{inlineStyleDimensions.height}"
-    on:click={onSelectNodeHandler}
-    on:mouseenter={(event) => dispatchNodeEvent('nodemouseenter', { node, event })}
-    on:mouseleave={(event) => dispatchNodeEvent('nodemouseleave', { node, event })}
-    on:mousemove={(event) => dispatchNodeEvent('nodemousemove', { node, event })}
-    on:contextmenu={(event) => dispatchNodeEvent('nodecontextmenu', { node, event })}
+    onclick={onSelectNodeHandler}
+    onmouseenter={(event) => {
+      onnodemouseenter?.({ node, event });
+    }}
+    onmouseleave={(event) => {
+      onnodemouseleave?.({ node, event });
+    }}
+    onmousemove={(event) => {
+      onnodemousemove?.({ node, event });
+    }}
+    oncontextmenu={(event) => {
+      onnodecontextmenu?.({ node, event });
+    }}
   >
     <svelte:component
       this={nodeComponent}
@@ -197,8 +210,8 @@
       {zIndex}
       {dragging}
       {dragHandle}
-      type={nodeType}
-      isConnectable={$connectableStore}
+      {type}
+      isConnectable={connectable}
       positionAbsoluteX={positionX}
       positionAbsoluteY={positionY}
       {width}

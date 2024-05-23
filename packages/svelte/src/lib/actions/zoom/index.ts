@@ -1,4 +1,3 @@
-import type { Writable } from 'svelte/store';
 import {
   PanOnScrollMode,
   XYPanZoom,
@@ -7,19 +6,18 @@ import {
   type PanZoomInstance,
   type Viewport
 } from '@xyflow/system';
+import type { SvelteFlowStore } from '$lib/store/types';
 
 type ZoomParams = {
-  viewport: Writable<Viewport>;
+  store: SvelteFlowStore;
   initialViewport: Viewport;
   minZoom: number;
   maxZoom: number;
-  dragging: Writable<boolean>;
   onPanZoomStart?: OnPanZoom;
   onPanZoom?: OnPanZoom;
   onPanZoomEnd?: OnPanZoom;
   onPaneContextMenu?: (event: MouseEvent) => void;
   translateExtent: CoordinateExtent;
-  panZoom: Writable<PanZoomInstance | null>;
   zoomOnScroll: boolean;
   zoomOnPinch: boolean;
   zoomOnDoubleClick: boolean;
@@ -38,8 +36,7 @@ type ZoomParams = {
 };
 
 export default function zoom(domNode: Element, params: ZoomParams) {
-  const { panZoom, minZoom, maxZoom, initialViewport, viewport, dragging, translateExtent } =
-    params;
+  const { store, minZoom, maxZoom, initialViewport, translateExtent } = params;
 
   const panZoomInstance = XYPanZoom({
     domNode,
@@ -47,13 +44,22 @@ export default function zoom(domNode: Element, params: ZoomParams) {
     maxZoom,
     translateExtent,
     viewport: initialViewport,
-    onTransformChange: (transform) =>
-      viewport.set({ x: transform[0], y: transform[1], zoom: transform[2] }),
-    onDraggingChange: dragging.set
+    onTransformChange: (transform) => {
+      store.viewport.x = transform[0];
+      store.viewport.y = transform[1];
+      store.viewport.zoom = transform[2];
+    },
+    onDraggingChange: (newDragging) => {
+      store.dragging = newDragging;
+    },
+    // TODO: panZoom is just the mouse event??
+    onPanZoomStart: params.onPanZoomStart,
+    onPanZoom: params.onPanZoom,
+    onPanZoomEnd: params.onPanZoomEnd
   });
   const currentViewport = panZoomInstance.getViewport();
-  viewport.set(currentViewport);
-  panZoom.set(panZoomInstance);
+  store.viewport = currentViewport;
+  store.panZoom = panZoomInstance;
 
   panZoomInstance.update(params);
 

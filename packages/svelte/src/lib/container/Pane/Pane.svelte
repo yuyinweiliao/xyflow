@@ -11,22 +11,9 @@
       handler?.(event);
     };
   }
-
-  export function toggleSelected<Item extends Node | Edge>(ids: string[]) {
-    return (item: Item) => {
-      const isSelected = ids.includes(item.id);
-
-      if (item.selected !== isSelected) {
-        item.selected = isSelected;
-      }
-
-      return item;
-    };
-  }
 </script>
 
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
   import {
     SelectionMode,
     getEventPosition,
@@ -38,55 +25,44 @@
   import type { Node, Edge, InternalNode } from '$lib/types';
   import type { PaneProps } from './types';
 
-  type $$Props = PaneProps;
+  let {
+    panOnDrag,
+    selectionOnDrag,
+    onpaneclick,
+    onpanecontextmenu,
+    nodes = $bindable(),
+    edges = $bindable(),
+    children
+  }: PaneProps = $props();
 
-  export let panOnDrag: $$Props['panOnDrag'] = undefined;
-  export let selectionOnDrag: $$Props['selectionOnDrag'] = undefined;
-
-  const dispatch = createEventDispatcher<{
-    paneclick: {
-      event: MouseEvent | TouchEvent;
-    };
-    panecontextmenu: {
-      event: MouseEvent;
-    };
-  }>();
-  const {
-    nodes,
-    nodeLookup,
-    edges,
-    viewport,
-    dragging,
-    elementsSelectable,
-    selectionRect,
-    selectionRectMode,
-    selectionKeyPressed,
-    selectionMode,
-    panActivationKeyPressed,
-    unselectNodesAndEdges
-  } = useStore();
+  const store = useStore();
 
   let container: HTMLDivElement;
   let containerBounds: DOMRect | null = null;
   let selectedNodes: InternalNode[] = [];
 
-  $: _panOnDrag = $panActivationKeyPressed || panOnDrag;
-  $: isSelecting =
-    $selectionKeyPressed || $selectionRect || (selectionOnDrag && _panOnDrag !== true);
-  $: hasActiveSelection = $elementsSelectable && (isSelecting || $selectionRectMode === 'user');
+  let panOnDragActive = $derived(store.panActivationKeyPressed || panOnDrag);
+  let isSelecting = $derived(
+    store.selectionKeyPressed ||
+      store.selectionRect ||
+      (selectionOnDrag && panOnDragActive !== true)
+  );
+  let hasActiveSelection = $derived(
+    store.elementsSelectable && (isSelecting || store.selectionRectMode === 'user')
+  );
 
   function onClick(event: MouseEvent | TouchEvent) {
-    dispatch('paneclick', { event });
+    onpaneclick?.({ event });
 
-    unselectNodesAndEdges();
-    selectionRectMode.set(null);
+    store.unselectNodesAndEdges();
+    store.selectionRectMode = null;
   }
 
   function onMouseDown(event: MouseEvent) {
-    containerBounds = container.getBoundingClientRect();
+    containerBounds = container!.getBoundingClientRect();
 
     if (
-      !elementsSelectable ||
+      !store.elementsSelectable ||
       !isSelecting ||
       event.button !== 0 ||
       event.target !== container ||
@@ -97,45 +73,57 @@
 
     const { x, y } = getEventPosition(event, containerBounds);
 
-    unselectNodesAndEdges();
+    store.unselectNodesAndEdges();
 
-    selectionRect.set({
+    store.selectionRect = {
       width: 0,
       height: 0,
       startX: x,
       startY: y,
       x,
       y
-    });
+    };
 
     // onSelectionStart?.(event);
   }
 
+  function toggleSelected(items: Node[] | Edge[], ids: string[]) {
+    for (const item of items) {
+      const isSelected = ids.includes(item.id);
+
+      if (item.selected !== isSelected) {
+        item.selected = isSelected;
+      }
+    }
+  }
+
   function onMouseMove(event: MouseEvent) {
-    if (!isSelecting || !containerBounds || !$selectionRect) {
+    if (!isSelecting || !containerBounds || !store.selectionRect) {
       return;
     }
     const mousePos = getEventPosition(event, containerBounds);
-    const startX = $selectionRect.startX ?? 0;
-    const startY = $selectionRect.startY ?? 0;
+    const startX = store.selectionRect.startX ?? 0;
+    const startY = store.selectionRect.startY ?? 0;
     const nextUserSelectRect = {
-      ...$selectionRect,
+      ...store.selectionRect,
       x: mousePos.x < startX ? mousePos.x : startX,
       y: mousePos.y < startY ? mousePos.y : startY,
       width: Math.abs(mousePos.x - startX),
       height: Math.abs(mousePos.y - startY)
     };
+
+    // TODO: This is super slow
     const prevSelectedNodeIds = selectedNodes.map((n) => n.id);
-    const prevSelectedEdgeIds = getConnectedEdges(selectedNodes, $edges).map((e) => e.id);
+    const prevSelectedEdgeIds = getConnectedEdges(selectedNodes, store.edges).map((e) => e.id);
 
     selectedNodes = getNodesInside(
-      $nodeLookup,
+      store.nodeLookup,
       nextUserSelectRect,
-      [$viewport.x, $viewport.y, $viewport.zoom],
-      $selectionMode === SelectionMode.Partial,
+      [store.viewport.x, store.viewport.y, store.viewport.zoom],
+      store.selectionMode === SelectionMode.Partial,
       true
     );
-    const selectedEdgeIds = getConnectedEdges(selectedNodes, $edges).map((e) => e.id);
+    const selectedEdgeIds = getConnectedEdges(selectedNodes, store.edges).map((e) => e.id);
     const selectedNodeIds = selectedNodes.map((n) => n.id);
 
     // this prevents unnecessary updates while updating the selection rectangle
@@ -143,18 +131,18 @@
       prevSelectedNodeIds.length !== selectedNodeIds.length ||
       selectedNodeIds.some((id) => !prevSelectedNodeIds.includes(id))
     ) {
-      nodes.update((nodes) => nodes.map(toggleSelected(selectedNodeIds)));
+      toggleSelected(nodes, selectedNodeIds);
     }
 
     if (
       prevSelectedEdgeIds.length !== selectedEdgeIds.length ||
       selectedEdgeIds.some((id) => !prevSelectedEdgeIds.includes(id))
     ) {
-      edges.update((edges) => edges.map(toggleSelected(selectedEdgeIds)));
+      toggleSelected(edges, selectedEdgeIds);
     }
 
-    selectionRectMode.set('user');
-    selectionRect.set(nextUserSelectRect);
+    store.selectionRectMode = 'user';
+    store.selectionRect = nextUserSelectRect;
   }
 
   function onMouseUp(event: MouseEvent) {
@@ -164,34 +152,36 @@
 
     // We only want to trigger click functions when in selection mode if
     // the user did not move the mouse.
-    if (!isSelecting && $selectionRectMode === 'user' && event.target === container) {
+    if (!isSelecting && store.selectionRectMode === 'user' && event.target === container) {
       onClick?.(event);
     }
-    selectionRect.set(null);
+    store.selectionRect = null;
 
     if (selectedNodes.length > 0) {
-      $selectionRectMode = 'nodes';
+      store.selectionRectMode = 'nodes';
     }
 
     // onSelectionEnd?.(event);
   }
 
   const onMouseLeave = () => {
-    if ($selectionRectMode === 'user') {
-      selectionRectMode.set(selectedNodes.length > 0 ? 'nodes' : null);
+    if (store.selectionRectMode === 'user') {
+      store.selectionRectMode = selectedNodes.length > 0 ? 'nodes' : null;
       //  onSelectionEnd?.(event);
     }
 
-    selectionRect.set(null);
+    store.selectionRect = null;
   };
 
   const onContextMenu = (event: MouseEvent) => {
-    if (Array.isArray(_panOnDrag) && _panOnDrag?.includes(2)) {
+    // panOnDrag might be an array of numbers that define the mouse buttons
+    // that should trigger panning on drag
+    if (Array.isArray(panOnDragActive) && panOnDragActive?.includes(2)) {
       event.preventDefault();
       return;
     }
 
-    dispatch('panecontextmenu', { event });
+    onpanecontextmenu?.({ event });
   };
 </script>
 
@@ -201,16 +191,16 @@
   bind:this={container}
   class="svelte-flow__pane"
   class:draggable={panOnDrag}
-  class:dragging={$dragging}
+  class:dragging={store.dragging}
   class:selection={isSelecting}
-  on:click={hasActiveSelection ? undefined : wrapHandler(onClick, container)}
-  on:mousedown={hasActiveSelection ? onMouseDown : undefined}
-  on:mousemove={hasActiveSelection ? onMouseMove : undefined}
-  on:mouseup={hasActiveSelection ? onMouseUp : undefined}
-  on:mouseleave={hasActiveSelection ? onMouseLeave : undefined}
-  on:contextmenu={wrapHandler(onContextMenu, container)}
+  onclick={hasActiveSelection ? undefined : wrapHandler(onClick, container!)}
+  onmousedown={hasActiveSelection ? onMouseDown : undefined}
+  onmousemove={hasActiveSelection ? onMouseMove : undefined}
+  onmouseup={hasActiveSelection ? onMouseUp : undefined}
+  onmouseleave={hasActiveSelection ? onMouseLeave : undefined}
+  oncontextmenu={wrapHandler(onContextMenu, container!)}
 >
-  <slot />
+  {@render children()}
 </div>
 
 <style>

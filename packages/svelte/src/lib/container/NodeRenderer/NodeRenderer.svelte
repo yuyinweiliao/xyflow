@@ -4,15 +4,22 @@
 
   import { NodeWrapper } from '$lib/components/NodeWrapper';
   import { useStore } from '$lib/store';
+  import type { NodeEvents } from '$lib/types/events';
+  import type { Node } from '$lib/types';
 
-  const {
-    visibleNodes,
-    nodesDraggable,
-    nodesConnectable,
-    elementsSelectable,
-    updateNodeInternals,
-    parentLookup
-  } = useStore();
+  let {
+    nodes,
+    onnodeclick,
+    onnodemouseenter,
+    onnodemousemove,
+    onnodemouseleave,
+    onnodedrag,
+    onnodedragstart,
+    onnodedragstop,
+    onnodecontextmenu
+  }: NodeEvents & { nodes: Node[] } = $props();
+
+  const store = useStore();
 
   const resizeObserver: ResizeObserver | null =
     typeof ResizeObserver === 'undefined'
@@ -22,15 +29,13 @@
 
           entries.forEach((entry: ResizeObserverEntry) => {
             const id = entry.target.getAttribute('data-id') as string;
-
             updates.set(id, {
               id,
               nodeElement: entry.target as HTMLDivElement,
               force: true
             });
           });
-
-          updateNodeInternals(updates);
+          store.updateNodeInternals(updates);
         });
 
   onDestroy(() => {
@@ -38,38 +43,42 @@
   });
 </script>
 
+<!-- TODO: render visibleNodes -->
 <div class="svelte-flow__nodes">
-  {#each $visibleNodes as node (node.id)}
-    {@const nodeDimesions = getNodeDimensions(node)}
+  {#each nodes as user_node (user_node.id)}
+    {@const node = store.nodeLookup.get(user_node.id)!}
     {@const posOrigin = getPositionWithOrigin({
       x: node.internals.positionAbsolute.x,
       y: node.internals.positionAbsolute.y,
-      ...nodeDimesions,
+      ...getNodeDimensions(node),
       origin: node.origin
     })}
     <NodeWrapper
       {node}
       id={node.id}
       data={node.data}
-      selected={!!node.selected}
-      hidden={!!node.hidden}
-      draggable={!!(node.draggable || ($nodesDraggable && typeof node.draggable === 'undefined'))}
+      hidden={node.hidden}
+      selected={node.selected}
+      draggable={!!(
+        node.draggable ||
+        (store.nodesDraggable && typeof node.draggable === 'undefined')
+      )}
       selectable={!!(
         node.selectable ||
-        ($elementsSelectable && typeof node.selectable === 'undefined')
+        (store.elementsSelectable && typeof node.selectable === 'undefined')
       )}
       connectable={!!(
         node.connectable ||
-        ($nodesConnectable && typeof node.connectable === 'undefined')
+        (store.nodesConnectable && typeof node.connectable === 'undefined')
       )}
       positionX={node.internals.positionAbsolute.x}
       positionY={node.internals.positionAbsolute.y}
       positionOriginX={posOrigin.x ?? 0}
       positionOriginY={posOrigin.y ?? 0}
-      isParent={$parentLookup.has(node.id)}
+      isParent={store.parentLookup.has(node.id)}
       style={node.style}
       class={node.class}
-      type={node.type ?? 'default'}
+      type={node.type}
       sourcePosition={node.sourcePosition}
       targetPosition={node.targetPosition}
       dragging={node.dragging}
@@ -83,14 +92,14 @@
       measuredWidth={node.measured.width}
       measuredHeight={node.measured.height}
       {resizeObserver}
-      on:nodeclick
-      on:nodemouseenter
-      on:nodemousemove
-      on:nodemouseleave
-      on:nodedrag
-      on:nodedragstart
-      on:nodedragstop
-      on:nodecontextmenu
+      {onnodeclick}
+      {onnodemouseenter}
+      {onnodemousemove}
+      {onnodemouseleave}
+      {onnodedrag}
+      {onnodedragstart}
+      {onnodedragstop}
+      {onnodecontextmenu}
     />
   {/each}
 </div>

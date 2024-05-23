@@ -18,6 +18,7 @@
 		'node-resizer',
 		'overview',
 		'stress',
+		'ssr',
 		'subflows',
 		'two-way-viewport',
 		'usenodesdata',
@@ -27,7 +28,7 @@
 		'reset'
 	];
 
-	const onChange = (event: Event) => {
+	const onchange = (event: Event) => {
 		const route = (event.target as HTMLSelectElement).value;
 		goto(route);
 	};
@@ -35,7 +36,7 @@
 
 <header>
 	<div class="logo">Svelte Flow</div>
-	<select on:change={onChange} value={$page.route.id}>
+	<select {onchange} value={$page.route.id}>
 		{#each routes as route}
 			<option value={`/examples/${route}`}>{route}</option>
 		{/each}

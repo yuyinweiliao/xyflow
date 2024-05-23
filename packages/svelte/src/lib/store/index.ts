@@ -14,58 +14,48 @@ import {
   type XYPosition,
   type CoordinateExtent,
   type UpdateConnection,
-  errorMessages
+  errorMessages,
+  isInternalNodeBase
 } from '@xyflow/system';
 
-import type { EdgeTypes, NodeTypes, Node, Edge, FitViewOptions, ConnectionData } from '$lib/types';
+import type {
+  EdgeTypes,
+  NodeTypes,
+  Node,
+  Edge,
+  FitViewOptions,
+  ConnectionData,
+  InternalNode
+} from '$lib/types';
 import { initialEdgeTypes, initialNodeTypes, getInitialStore } from './initial-store';
-import type { SvelteFlowStore } from './types';
-import { syncNodeStores, syncEdgeStores, syncViewportStores } from './utils';
-import { getVisibleEdges } from './visible-edges';
-import { getVisibleNodes } from './visible-nodes';
-import { getDerivedConnectionProps } from './derived-connection-props';
+import type { SvelteFlowStore, SvelteFlowStoreActions, SvelteFlowStoreState } from './types';
 
 export const key = Symbol();
 
-export function createStore({
-  nodes,
-  edges,
-  width,
-  height,
-  fitView: fitViewOnCreate
-}: {
-  nodes?: Node[];
-  edges?: Edge[];
-  width?: number;
-  height?: number;
-  fitView?: boolean;
-}): SvelteFlowStore {
-  const store = getInitialStore({ nodes, edges, width, height, fitView: fitViewOnCreate });
+export function createStore(): SvelteFlowStore {
+  const store = getInitialStore();
 
   function setNodeTypes(nodeTypes: NodeTypes) {
-    store.nodeTypes.set({
+    store.nodeTypes = {
       ...initialNodeTypes,
       ...nodeTypes
-    });
+    };
   }
 
   function setEdgeTypes(edgeTypes: EdgeTypes) {
-    store.edgeTypes.set({
+    store.edgeTypes = {
       ...initialEdgeTypes,
       ...edgeTypes
-    });
+    };
   }
 
   function addEdge(edgeParams: Edge | Connection) {
-    const edges = get(store.edges);
-    store.edges.set(addEdgeUtil(edgeParams, edges));
+    addEdgeUtil(edgeParams, store.edges, true);
   }
 
   const updateNodePositions: UpdateNodePositions = (nodeDragItems, dragging = false) => {
-    const nodeLookup = get(store.nodeLookup);
-
     for (const [id, dragItem] of nodeDragItems) {
-      const node = nodeLookup.get(id)?.internals.userNode;
+      const node = store.nodeLookup.get(id)?.internals.userNode;
 
       if (!node) {
         continue;
@@ -74,31 +64,29 @@ export function createStore({
       node.position = dragItem.position;
       node.dragging = dragging;
     }
-
-    store.nodes.update((nds) => nds);
   };
 
   function updateNodeInternals(updates: Map<string, InternalNodeUpdate>) {
-    const nodeLookup = get(store.nodeLookup);
+    const nodeLookup = store.nodeLookup;
     const { changes, updatedInternals } = updateNodeInternalsSystem(
       updates,
       nodeLookup,
-      get(store.parentLookup),
-      get(store.domNode),
-      get(store.nodeOrigin)
+      store.parentLookup,
+      store.domNode,
+      store.nodeOrigin
     );
 
     if (!updatedInternals) {
       return;
     }
 
-    if (!get(store.fitViewOnInitDone) && get(store.fitViewOnInit)) {
-      const fitViewOptions = get(store.fitViewOptions);
+    if (!store.fitViewOnInitDone && store.fitViewOnInit) {
+      const fitViewOptions = store.fitViewOptions;
       const fitViewOnInitDone = fitView({
         ...fitViewOptions,
         nodes: fitViewOptions?.nodes
       });
-      store.fitViewOnInitDone.set(fitViewOnInitDone);
+      store.fitViewOnInitDone = fitViewOnInitDone;
     }
 
     for (const change of changes) {
@@ -111,12 +99,10 @@ export function createStore({
       switch (change.type) {
         case 'dimensions': {
           const measured = { ...node.measured, ...change.dimensions };
-
           if (change.setAttributes) {
-            node.width = change.dimensions?.width ?? node.width;
-            node.height = change.dimensions?.height ?? node.height;
+            if (change.dimensions?.width) node.width = change.dimensions.width;
+            if (change.dimensions?.height) node.height = change.dimensions.height;
           }
-
           node.measured = measured;
           break;
         }
@@ -126,15 +112,13 @@ export function createStore({
       }
     }
 
-    store.nodes.update((nds) => nds);
-
-    if (!get(store.nodesInitialized)) {
-      store.nodesInitialized.set(true);
+    if (!store.nodesInitialized) {
+      store.nodesInitialized = true;
     }
   }
 
   function fitView(options?: FitViewOptions) {
-    const panZoom = get(store.panZoom);
+    const panZoom = store.panZoom;
 
     if (!panZoom) {
       return false;
@@ -142,23 +126,21 @@ export function createStore({
 
     return fitViewSystem(
       {
-        nodeLookup: get(store.nodeLookup),
-        width: get(store.width),
-        height: get(store.height),
-        minZoom: get(store.minZoom),
-        maxZoom: get(store.maxZoom),
+        nodeLookup: store.nodeLookup,
+        width: store.width,
+        height: store.height,
+        minZoom: store.minZoom,
+        maxZoom: store.maxZoom,
         panZoom,
-        nodeOrigin: get(store.nodeOrigin)
+        nodeOrigin: store.nodeOrigin
       },
       options
     );
   }
 
   function zoomBy(factor: number, options?: ViewportHelperFunctionOptions) {
-    const panZoom = get(store.panZoom);
-
-    if (panZoom) {
-      panZoom.scaleBy(factor, options);
+    if (store.panZoom) {
+      store.panZoom.scaleBy(factor, options);
     }
   }
 
@@ -171,162 +153,123 @@ export function createStore({
   }
 
   function setMinZoom(minZoom: number) {
-    const panZoom = get(store.panZoom);
-
-    if (panZoom) {
-      panZoom.setScaleExtent([minZoom, get(store.maxZoom)]);
-      store.minZoom.set(minZoom);
+    if (store.panZoom) {
+      store.panZoom.setScaleExtent([minZoom, store.maxZoom]);
+      store.minZoom = minZoom;
     }
   }
 
   function setMaxZoom(maxZoom: number) {
-    const panZoom = get(store.panZoom);
-
-    if (panZoom) {
-      panZoom.setScaleExtent([get(store.minZoom), maxZoom]);
-      store.maxZoom.set(maxZoom);
+    if (store.panZoom) {
+      store.panZoom.setScaleExtent([store.minZoom, maxZoom]);
+      store.maxZoom = maxZoom;
     }
   }
 
   function setTranslateExtent(extent: CoordinateExtent) {
-    const panZoom = get(store.panZoom);
-
-    if (panZoom) {
-      panZoom.setTranslateExtent(extent);
-      store.translateExtent.set(extent);
+    if (store.panZoom) {
+      store.panZoom.setTranslateExtent(extent);
+      store.translateExtent = extent;
     }
   }
 
-  function resetSelectedElements(elements: Node[] | Edge[]) {
-    let elementsChanged = false;
-    elements.forEach((element) => {
-      if (element.selected) {
-        element.selected = false;
-        elementsChanged = true;
+  function resetSelectedEdges(edges: Edge[] | IterableIterator<Edge>) {
+    for (const edge of edges) {
+      if (edge.selected) {
+        edge.selected = false;
       }
-    });
-    return elementsChanged;
+    }
+  }
+
+  function resetSelectedNodes(nodes: Node[] | IterableIterator<InternalNode>): void {
+    for (const node of nodes) {
+      if (isInternalNodeBase(node)) {
+        if (node.internals.userNode.selected) {
+          node.internals.userNode.selected = false;
+        }
+      } else {
+        if (node.selected) {
+          node.selected = false;
+        }
+      }
+    }
   }
 
   function unselectNodesAndEdges(params?: { nodes?: Node[]; edges?: Edge[] }) {
-    const resetNodes = resetSelectedElements(params?.nodes || get(store.nodes));
-    if (resetNodes) store.nodes.update((nds) => nds);
+    resetSelectedNodes(params?.nodes ?? store.selectedNodes.values());
 
-    const resetEdges = resetSelectedElements(params?.edges || get(store.edges));
-    if (resetEdges) store.edges.update((nds) => nds);
+    resetSelectedEdges(params?.edges ?? store.selectedEdges.values());
   }
 
-  store.deleteKeyPressed.subscribe(async (deleteKeyPressed) => {
-    if (deleteKeyPressed) {
-      const nodes = get(store.nodes);
-      const edges = get(store.edges);
-      const selectedNodes = nodes.filter((node) => node.selected);
-      const selectedEdges = edges.filter((edge) => edge.selected);
+  function addSelectedNodes(ids: string[]) {
+    const isMultiSelection = store.multiselectionKeyPressed;
 
-      const { nodes: matchingNodes, edges: matchingEdges } = await getElementsToRemove({
-        nodesToRemove: selectedNodes,
-        edgesToRemove: selectedEdges,
-        nodes,
-        edges,
-        onBeforeDelete: get(store.onbeforedelete)
-      });
+    for (const node of store.nodeLookup.values()) {
+      const nodeWillBeSelected = ids.includes(node.id);
+      const selected = isMultiSelection
+        ? node.internals.userNode.selected || nodeWillBeSelected
+        : nodeWillBeSelected;
 
-      if (matchingNodes.length || matchingEdges.length) {
-        store.nodes.update((nds) =>
-          nds.filter((node) => !matchingNodes.some((mN) => mN.id === node.id))
-        );
-        store.edges.update((eds) =>
-          eds.filter((edge) => !matchingEdges.some((mE) => mE.id === edge.id))
-        );
-
-        get(store.ondelete)?.({
-          nodes: matchingNodes,
-          edges: matchingEdges
-        });
+      // we need to mutate the node here in order to have the correct selected state in the drag handler
+      // node.selected = selected;
+      if (!!node.internals.userNode.selected !== selected) {
+        node.internals.userNode.selected = selected;
       }
     }
-  });
-
-  function addSelectedNodes(ids: string[]) {
-    const isMultiSelection = get(store.multiselectionKeyPressed);
-
-    store.nodes.update((ns) =>
-      ns.map((node) => {
-        const nodeWillBeSelected = ids.includes(node.id);
-        const selected = isMultiSelection
-          ? node.selected || nodeWillBeSelected
-          : nodeWillBeSelected;
-
-        // we need to mutate the node here in order to have the correct selected state in the drag handler
-        node.selected = selected;
-
-        return node;
-      })
-    );
 
     if (!isMultiSelection) {
-      store.edges.update((es) =>
-        es.map((edge) => {
-          edge.selected = false;
-          return edge;
-        })
-      );
+      for (const edge of store.edges) {
+        edge.selected = false;
+      }
     }
   }
 
   function addSelectedEdges(ids: string[]) {
-    const isMultiSelection = get(store.multiselectionKeyPressed);
+    const isMultiSelection = store.multiselectionKeyPressed;
 
-    store.edges.update((edges) =>
-      edges.map((edge) => {
-        const edgeWillBeSelected = ids.includes(edge.id);
-        const selected = isMultiSelection
-          ? edge.selected || edgeWillBeSelected
-          : edgeWillBeSelected;
+    for (const edge of store.edges) {
+      const edgeWillBeSelected = ids.includes(edge.id);
+      const selected = isMultiSelection ? edge.selected || edgeWillBeSelected : edgeWillBeSelected;
 
+      if (!!edge.selected !== selected) {
         edge.selected = selected;
-
-        return edge;
-      })
-    );
+      }
+    }
 
     if (!isMultiSelection) {
-      store.nodes.update((ns) =>
-        ns.map((node) => {
-          node.selected = false;
-          return node;
-        })
-      );
+      for (const node of store.nodeLookup.values()) {
+        node.internals.userNode.selected = false;
+      }
     }
   }
 
   function handleNodeSelection(id: string) {
-    const node = get(store.nodes)?.find((n) => n.id === id);
+    const node = store.nodeLookup.get(id)?.internals.userNode;
 
     if (!node) {
       console.warn('012', errorMessages['error012'](id));
       return;
     }
 
-    store.selectionRect.set(null);
-    store.selectionRectMode.set(null);
+    store.selectionRect = null;
+    store.selectionRectMode = null;
 
     if (!node.selected) {
       addSelectedNodes([id]);
-    } else if (node.selected && get(store.multiselectionKeyPressed)) {
+    } else if (node.selected && store.multiselectionKeyPressed) {
       unselectNodesAndEdges({ nodes: [node], edges: [] });
     }
   }
 
   function panBy(delta: XYPosition) {
-    const viewport = get(store.viewport);
+    const viewport = store.viewport;
     return panBySystem({
       delta,
-      panZoom: get(store.panZoom),
+      panZoom: store.panZoom,
       transform: [viewport.x, viewport.y, viewport.zoom],
-      translateExtent: get(store.translateExtent),
-      width: get(store.width),
-      height: get(store.height)
+      translateExtent: store.translateExtent,
+      width: store.width,
+      height: store.height
     });
   }
 
@@ -337,11 +280,8 @@ export function createStore({
     connectionStatus: null
   };
 
-  // by creating an internal, unexposed store and using a derived store
-  // we prevent using slow get() calls
-  const currentConnection = writable<ConnectionData>(initConnectionUpdateData);
   const updateConnection: UpdateConnection = (newConnection: ConnectionData) => {
-    currentConnection.set(newConnection);
+    store.connectionData = newConnection;
   };
 
   function cancelConnection() {
@@ -349,56 +289,46 @@ export function createStore({
   }
 
   function reset() {
-    store.fitViewOnInitDone.set(false);
-    store.selectionRect.set(null);
-    store.selectionRectMode.set(null);
-    store.snapGrid.set(null);
-    store.isValidConnection.set(() => true);
+    store.fitViewOnInitDone = false;
+    store.selectionRect = null;
+    store.selectionRectMode = null;
+    store.snapGrid = null;
+    store.isValidConnection = () => true;
 
     unselectNodesAndEdges();
     cancelConnection();
+
+    // TODO: clear all maps in the store
   }
 
-  return {
-    // state
-    ...store,
+  const storeWithAction = Object.assign<SvelteFlowStoreState, SvelteFlowStoreActions>(store, {
+    // TODO: markers and stuff
+    // visibleEdges: derivedSignal(() => get(store.edges)),
+    // // visibleNodes: getVisibleNodes(store),
+    // visibleNodes: derivedSignal(() => {
+    //   // TODO: this does not work yet
+    //   const transform: Transform = [
+    //     get(store.viewport).x,
+    //     get(store.viewport).y,
+    //     get(store.viewport).zoom
+    //   ];
 
-    // derived state
-    connection: getDerivedConnectionProps(store, currentConnection),
-    visibleEdges: getVisibleEdges(store),
-    visibleNodes: getVisibleNodes(store),
-    markers: derived(
-      [store.edges, store.defaultMarkerColor, store.flowId],
-      ([edges, defaultColor, id]) => createMarkerIds(edges, { defaultColor, id })
-    ),
-    initialized: (() => {
-      let initialized = false;
-      const initialNodesLength = get(store.nodes).length;
-      const initialEdgesLength = get(store.edges).length;
-      return derived(
-        [store.nodesInitialized, store.edgesInitialized, store.viewportInitialized],
-        ([nodesInitialized, edgesInitialized, viewportInitialized]) => {
-          // If it was already initialized, return true from then on
-          if (initialized) return initialized;
-
-          // if it hasn't been initialised check if it's now
-          if (initialNodesLength === 0) {
-            initialized = viewportInitialized;
-          } else if (initialEdgesLength === 0) {
-            initialized = viewportInitialized && nodesInitialized;
-          } else {
-            initialized = viewportInitialized && nodesInitialized && edgesInitialized;
-          }
-
-          return initialized;
-        }
-      );
-    })(),
-
+    //   return store.onlyRenderVisibleElements
+    //     ? getNodesInside(
+    //         store.nodeLookup,
+    //         { x: 0, y: 0, width: store.width, height: store.height },
+    //         transform,
+    //         true
+    //       )
+    //     : Array.from(store.nodeLookup.values());
+    // }),
+    // markers: derivedSignal(() =>
+    //   createMarkerIds(get(store.edges), { defaultColor: store.defaultMarkerColor, id: store.flowId })
+    // ),
     // actions
-    syncNodeStores: (nodes) => syncNodeStores(store.nodes, nodes),
-    syncEdgeStores: (edges) => syncEdgeStores(store.edges, edges),
-    syncViewport: (viewport) => syncViewportStores(store.panZoom, store.viewport, viewport),
+    // syncNodeStores: (nodes) => syncNodeStores(store.nodes, nodes),
+    // syncEdgeStores: (edges) => syncEdgeStores(store.edges, edges),
+    // syncViewport: (viewport) => syncViewportStores(store.panZoom, store.viewport, viewport),
     setNodeTypes,
     setEdgeTypes,
     addEdge,
@@ -418,7 +348,9 @@ export function createStore({
     updateConnection,
     cancelConnection,
     reset
-  };
+  } satisfies SvelteFlowStoreActions);
+
+  return storeWithAction;
 }
 
 export function useStore(): SvelteFlowStore {
@@ -433,20 +365,8 @@ export function useStore(): SvelteFlowStore {
   return store.getStore();
 }
 
-export function createStoreContext({
-  nodes,
-  edges,
-  width,
-  height,
-  fitView
-}: {
-  nodes?: Node[];
-  edges?: Edge[];
-  width?: number;
-  height?: number;
-  fitView?: boolean;
-}) {
-  const store = createStore({ nodes, edges, width, height, fitView });
+export function createStoreContext() {
+  const store = createStore();
 
   setContext(key, {
     getStore: () => store

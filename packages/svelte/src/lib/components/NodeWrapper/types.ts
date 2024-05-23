@@ -23,7 +23,7 @@ export type NodeWrapperProps = Pick<
 > & {
   measuredWidth?: number;
   measuredHeight?: number;
-  type: string;
+  type?: string;
   positionX: number;
   positionY: number;
   positionOriginX: number;
@@ -34,4 +34,8 @@ export type NodeWrapperProps = Pick<
   zIndex: number;
   node: InternalNode;
   initialized: boolean;
+};
+
+export type ConnectableContext = {
+  value: boolean;
 };
