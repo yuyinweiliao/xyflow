@@ -1,13 +1,14 @@
-import { type MouseEvent, type KeyboardEvent } from 'react';
+import { type KeyboardEvent, type MouseEvent } from 'react';
 import cc from 'classcat';
 import { shallow } from 'zustand/shallow';
 import {
   clampPosition,
   elementSelectionKeys,
-  errorMessages,
   getNodeDimensions,
   isInputDOMNode,
   nodeHasDimensions,
+  XYError,
+  XYErrorCode,
 } from '@xyflow/system';
 
 import { useStore, useStoreApi } from '../../hooks/useStore';
@@ -57,7 +58,8 @@ export function NodeWrapper<NodeType extends Node>({
   let NodeComponent = nodeTypes?.[nodeType] || builtinNodeTypes[nodeType];
 
   if (NodeComponent === undefined) {
-    onError?.('003', errorMessages['error003'](nodeType));
+    const error = new XYError(XYErrorCode.NODE_TYPE_NOT_FOUND, nodeType);
+    onError?.(error.code, error.message, error);
     nodeType = 'default';
     NodeComponent = builtinNodeTypes.default;
   }
