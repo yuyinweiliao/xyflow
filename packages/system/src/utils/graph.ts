@@ -27,7 +27,7 @@ import {
   InternalNodeBase,
   NodeDragItem,
 } from '../types';
-import { errorMessages } from '../constants';
+import { XYError, XYErrorCode } from '../xyerror';
 
 /**
  * Test whether an object is useable as an Edge
@@ -324,7 +324,8 @@ export function calculateNodePosition<NodeType extends NodeBase>({
 
   if (node.extent === 'parent' && !node.expandParent) {
     if (!parentNode) {
-      onError?.('005', errorMessages['error005']());
+      const error = new XYError(XYErrorCode.NODE_EXTENT_INVALID);
+      onError?.(error.code, error.message, error);
     } else {
       const nodeWidth = node.measured.width;
       const nodeHeight = node.measured.height;
