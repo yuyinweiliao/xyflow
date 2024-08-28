@@ -1,3 +1,4 @@
+import { Dimensions, infiniteExtent } from '..';
 import {
   NodeBase,
   CoordinateExtent,
@@ -17,26 +18,47 @@ import {
   ParentLookup,
 } from '../types';
 import { getDimensions, getHandleBounds } from './dom';
-import { getBoundsOfRects, getNodeDimensions, isNumeric, nodeToRect } from './general';
+import {
+  clampPosition,
+  getBoundsOfRects,
+  getNodeDimensions,
+  isCoordinateExtent,
+  isNumeric,
+  nodeToRect,
+} from './general';
 import { getNodePositionWithOrigin } from './graph';
 import { ParentExpandChild } from './types';
 
 const defaultOptions = {
   nodeOrigin: [0, 0] as NodeOrigin,
+  nodeExtent: infiniteExtent,
   elevateNodesOnSelect: true,
   defaults: {},
 };
+
 const adoptUserNodesDefaultOptions = {
   ...defaultOptions,
   checkEquality: true,
 };
+
+function mergeObjects<T extends Record<string, any>>(base: T, incoming?: Partial<T>): T {
+  const result = { ...base };
+  for (const key in incoming) {
+    if (incoming[key] !== undefined) {
+      // typecast is safe here, because we check for undefined
+      result[key] = (incoming as T)[key]!;
+    }
+  }
+
+  return result;
+}
 
 export function updateAbsolutePositions<NodeType extends NodeBase>(
   nodeLookup: NodeLookup<InternalNodeBase<NodeType>>,
   parentLookup: ParentLookup<InternalNodeBase<NodeType>>,
   options?: UpdateNodesOptions<NodeType>
 ) {
-  const _options = { ...defaultOptions, ...options };
+  const _options = mergeObjects(defaultOptions, options);
   for (const node of nodeLookup.values()) {
     if (!node.parentId) {
       continue;
@@ -48,6 +70,7 @@ export function updateAbsolutePositions<NodeType extends NodeBase>(
 
 type UpdateNodesOptions<NodeType extends NodeBase> = {
   nodeOrigin?: NodeOrigin;
+  nodeExtent?: CoordinateExtent;
   elevateNodesOnSelect?: boolean;
   defaults?: Partial<NodeType>;
   checkEquality?: boolean;
@@ -59,7 +82,8 @@ export function adoptUserNodes<NodeType extends NodeBase>(
   parentLookup: ParentLookup<InternalNodeBase<NodeType>>,
   options?: UpdateNodesOptions<NodeType>
 ) {
-  const _options = { ...adoptUserNodesDefaultOptions, ...options };
+  const _options = mergeObjects(adoptUserNodesDefaultOptions, options);
+
   const tmpLookup = new Map(nodeLookup);
   nodeLookup.clear();
   parentLookup.clear();
@@ -71,6 +95,10 @@ export function adoptUserNodes<NodeType extends NodeBase>(
     if (_options.checkEquality && userNode === internalNode?.internals.userNode) {
       nodeLookup.set(userNode.id, internalNode);
     } else {
+      const positionOrigin = getNodePositionWithOrigin(userNode, _options.nodeOrigin);
+      const extent = isCoordinateExtent(userNode.extent) ? userNode.extent : _options.nodeExtent;
+      const positionAbsolute = clampPosition(positionOrigin, extent, getNodeDimensions(userNode));
+
       internalNode = {
         ..._options.defaults,
         ...userNode,
@@ -79,7 +107,7 @@ export function adoptUserNodes<NodeType extends NodeBase>(
           height: userNode.measured?.height,
         },
         internals: {
-          positionAbsolute: getNodePositionWithOrigin(userNode, _options.nodeOrigin),
+          positionAbsolute,
           // if user re-initializes the node or removes `measured` for whatever reason, we reset the handleBounds so that the node gets re-measured
           handleBounds: !userNode.measured ? undefined : internalNode?.internals.handleBounds,
           z: calculateZ(userNode, selectedNodeZ),
@@ -101,7 +129,7 @@ function updateChildPosition<NodeType extends NodeBase>(
   parentLookup: ParentLookup<InternalNodeBase<NodeType>>,
   options?: UpdateNodesOptions<NodeType>
 ) {
-  const _options = { ...defaultOptions, ...options };
+  const _options = mergeObjects(defaultOptions, options);
 
   const parentId = node.parentId!;
   const parentNode = nodeLookup.get(parentId);
@@ -137,6 +165,24 @@ function updateChildPosition<NodeType extends NodeBase>(
   }
 }
 
+function clampPositionToParent<NodeType extends NodeBase>(
+  childPosition: XYPosition,
+  childDimensions: Dimensions,
+  parent: InternalNodeBase<NodeType>
+) {
+  const parentDimensions = getNodeDimensions(parent);
+  const parentPosition = parent.internals.positionAbsolute;
+
+  return clampPosition(
+    childPosition,
+    [
+      [parentPosition.x, parentPosition.y],
+      [parentPosition.x + parentDimensions.width, parentPosition.y + parentDimensions.height],
+    ],
+    childDimensions
+  );
+}
+
 function calculateZ(node: NodeBase, selectedNodeZ: number) {
   return (isNumeric(node.zIndex) ? node.zIndex : 0) + (node.selected ? selectedNodeZ : 0);
 }
@@ -147,13 +193,27 @@ function calculateChildXYZ<NodeType extends NodeBase>(
   nodeOrigin: NodeOrigin,
   selectedNodeZ: number
 ) {
-  const position = getNodePositionWithOrigin(childNode, nodeOrigin);
+  const childDimensions = getNodeDimensions(childNode);
+  const parentPosition = parentNode.internals.positionAbsolute;
+
+  let position = getNodePositionWithOrigin(childNode, nodeOrigin);
+
+  if (isCoordinateExtent(childNode.extent)) {
+    position = clampPosition(position, childNode.extent, childDimensions);
+  }
+
+  let absolutePosition = { x: parentPosition.x + position.x, y: parentPosition.y + position.y };
+
+  if (childNode.extent === 'parent') {
+    absolutePosition = clampPositionToParent(absolutePosition, childDimensions, parentNode);
+  }
+
   const childZ = calculateZ(childNode, selectedNodeZ);
   const parentZ = parentNode.internals.z ?? 0;
 
   return {
-    x: parentNode.internals.positionAbsolute.x + position.x,
-    y: parentNode.internals.positionAbsolute.y + position.y,
+    x: absolutePosition.x,
+    y: absolutePosition.y,
     z: parentZ > childZ ? parentZ : childZ,
   };
 }
@@ -249,7 +309,8 @@ export function updateNodeInternals<NodeType extends InternalNodeBase>(
   nodeLookup: NodeLookup<NodeType>,
   parentLookup: ParentLookup<NodeType>,
   domNode: HTMLElement | null,
-  nodeOrigin?: NodeOrigin
+  nodeOrigin?: NodeOrigin,
+  nodeExtent?: CoordinateExtent
 ): { changes: (NodeDimensionChange | NodePositionChange)[]; updatedInternals: boolean } {
   const viewportNode = domNode?.querySelector('.xyflow__viewport');
   let updatedInternals = false;
@@ -287,11 +348,22 @@ export function updateNodeInternals<NodeType extends InternalNodeBase>(
 
       if (doUpdate) {
         const nodeBounds = update.nodeElement.getBoundingClientRect();
+        let extent = isCoordinateExtent(node.extent) ? node.extent : nodeExtent;
+        let positionAbsolute = node.internals.positionAbsolute;
+        if (node.parentId && node.extent === 'parent') {
+          positionAbsolute = clampPositionToParent(
+            positionAbsolute,
+            getNodeDimensions(node),
+            nodeLookup.get(node.parentId)!
+          );
+        } else if (extent) {
+          positionAbsolute = clampPosition(positionAbsolute, extent, dimensions);
+        }
 
         node.measured = dimensions;
         node.internals = {
           ...node.internals,
-          positionAbsolute: getNodePositionWithOrigin(node, nodeOrigin),
+          positionAbsolute,
           handleBounds: {
             source: getHandleBounds('source', update.nodeElement, nodeBounds, zoom, node.id),
             target: getHandleBounds('target', update.nodeElement, nodeBounds, zoom, node.id),

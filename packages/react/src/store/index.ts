@@ -1,6 +1,5 @@
 import { createWithEqualityFn } from 'zustand/traditional';
 import {
-  clampPosition,
   getFitViewNodes,
   fitView as fitViewSystem,
   adoptUserNodes,
@@ -15,6 +14,7 @@ import {
   ParentExpandChild,
   initialConnection,
   NodeOrigin,
+  CoordinateExtent,
 } from '@xyflow/system';
 
 import { applyEdgeChanges, applyNodeChanges, createSelectionChange, getSelectionChanges } from '../utils/changes';
@@ -30,6 +30,7 @@ const createStore = ({
   height,
   fitView,
   nodeOrigin,
+  nodeExtent,
 }: {
   nodes?: Node[];
   edges?: Edge[];
@@ -39,10 +40,11 @@ const createStore = ({
   height?: number;
   fitView?: boolean;
   nodeOrigin?: NodeOrigin;
+  nodeExtent?: CoordinateExtent;
 }) =>
   createWithEqualityFn<ReactFlowState>(
     (set, get) => ({
-      ...getInitialState({ nodes, edges, width, height, fitView, nodeOrigin, defaultNodes, defaultEdges }),
+      ...getInitialState({ nodes, edges, width, height, fitView, nodeOrigin, nodeExtent, defaultNodes, defaultEdges }),
       setNodes: (nodes: Node[]) => {
         const { nodeLookup, parentLookup, nodeOrigin, elevateNodesOnSelect } = get();
         // setNodes() is called exclusively in response to user actions:
@@ -51,7 +53,12 @@ const createStore = ({
         //
         // When this happens, we take the note objects passed by the user and extend them with fields
         // relevant for internal React Flow operations.
-        adoptUserNodes(nodes, nodeLookup, parentLookup, { nodeOrigin, elevateNodesOnSelect, checkEquality: true });
+        adoptUserNodes(nodes, nodeLookup, parentLookup, {
+          nodeOrigin,
+          nodeExtent,
+          elevateNodesOnSelect,
+          checkEquality: true,
+        });
 
         set({ nodes });
       },
@@ -87,6 +94,7 @@ const createStore = ({
           fitViewOnInitOptions,
           domNode,
           nodeOrigin,
+          nodeExtent,
           debug,
           fitViewSync,
         } = get();
@@ -96,7 +104,8 @@ const createStore = ({
           nodeLookup,
           parentLookup,
           domNode,
-          nodeOrigin
+          nodeOrigin,
+          nodeExtent
         );
 
         if (!updatedInternals) {
@@ -278,23 +287,20 @@ const createStore = ({
         triggerEdgeChanges(edgeChanges);
       },
       setNodeExtent: (nodeExtent) => {
-        const { nodeLookup } = get();
-
-        for (const [, node] of nodeLookup) {
-          const positionAbsolute = clampPosition(node.internals.positionAbsolute, nodeExtent);
-
-          nodeLookup.set(node.id, {
-            ...node,
-            internals: {
-              ...node.internals,
-              positionAbsolute,
-            },
-          });
-        }
+        const { nodes, nodeLookup, parentLookup, nodeOrigin, elevateNodesOnSelect } = get();
 
         set({
           nodeExtent,
         });
+
+        adoptUserNodes(nodes, nodeLookup, parentLookup, {
+          nodeOrigin,
+          nodeExtent,
+          elevateNodesOnSelect,
+          checkEquality: false,
+        });
+
+        set({ nodes });
       },
       panBy: (delta): Promise<boolean> => {
         const { transform, width, height, panZoom, translateExtent } = get();
